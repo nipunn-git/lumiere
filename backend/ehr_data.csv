@@ -1,0 +1,4 @@
+patient_id,name,gender,dob,address
+P001,John Doe,M,1990-01-01,New York
+P002,Jane Smith,F,1985-05-12,California
+P003,Michael Brown,M,1978-09-23,Texas
