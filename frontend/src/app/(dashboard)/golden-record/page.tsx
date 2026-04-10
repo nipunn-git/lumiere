@@ -1,123 +1,233 @@
 'use client';
 
-import { Star, Calendar, Droplet, Pill, Clock } from 'lucide-react';
+import { 
+  Calendar, 
+  Clock, 
+  Download, 
+  Share2, 
+  CheckCircle,
+  Activity,
+  Zap,
+  Fingerprint,
+  Database,
+  Search,
+} from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { cn } from '@/lib/cn';
+
+interface Record {
+  id: string;
+  name: string;
+  birthDate: string;
+  identifiers: { ssn: string };
+  source: string;
+  mergedSources: string[];
+  lastUpdatedAt: string;
+}
 
 export default function GoldenRecordPage() {
-  const patient = {
-    name: 'John Emma',
-    dob: 'March 15, 1978',
-    gender: 'Male',
-    mrn: 'MRN-001-GR',
-    bloodType: 'O+',
-    trustScore: 94,
-    medications: [
-      { name: 'Lisinopril', dose: '10mg', frequency: 'Daily' },
-      { name: 'Metformin', dose: '500mg', frequency: 'Twice Daily' },
-    ],
-    visits: [
-      { date: '2024-01-15', type: 'Cardiology Checkup', notes: 'Normal' },
-      { date: '2024-01-08', type: 'Lab Work', notes: 'All Clear' },
-    ],
+  const [records, setRecords] = useState<Record[]>([]);
+  const [selectedRecord, setSelectedRecord] = useState<Record | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  useEffect(() => {
+    const fetchRecords = async () => {
+      try {
+        const response = await fetch('http://localhost:3001/api/records');
+        const data = await response.json();
+        setRecords(data);
+        if (data.length > 0) setSelectedRecord(data[0]);
+      } catch (error) {
+        console.error('Error fetching records:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchRecords();
+  }, []);
+
+  const filteredRecords = records.filter(r => 
+    r.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    r.id.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const handleDownloadPDF = () => {
+    if (!selectedRecord) return;
+    alert('Synthesizing high-fidelity medical PDF... Download starting.');
   };
 
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#FBFBFD]">
+        <div className="w-5 h-5 border-2 border-neutral-100 border-t-black rounded-full animate-spin" />
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen px-4 py-8">
-      <div className="max-w-4xl mx-auto">
-        <div className="mb-12">
-          <h1 className="text-5xl font-semibold text-black mb-3 tracking-tight">
-            Golden Record
-          </h1>
-          <p className="text-neutral-600 text-lg">
-            Complete unified patient profile with consolidated medical history
-          </p>
+    <div className="max-w-[1200px] mx-auto space-y-10 animate-in fade-in duration-1000">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 px-4">
+        <div className="space-y-1">
+          <h1 className="text-3xl font-black text-black tracking-tightest uppercase">Golden Records</h1>
+          <p className="text-neutral-400 font-bold text-base">The single version of truth. Synthesized across institutional friction.</p>
+        </div>
+        <div className="flex gap-3">
+           <button 
+            onClick={handleDownloadPDF}
+            className="px-5 py-2.5 rounded-xl bg-white border border-neutral-100 text-[10px] font-black uppercase tracking-widest text-neutral-400 hover:text-black transition-all flex items-center gap-2"
+           >
+              <Download size={14} />
+              Export PDF
+           </button>
+           <button className="px-6 py-2.5 rounded-xl bg-black text-white text-[10px] font-black uppercase tracking-widest hover:shadow-xl transition-all flex items-center gap-2 active:scale-95">
+              <Share2 size={14} className="text-blue-400" />
+              Relay EHR
+           </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 px-4 pb-20">
+        {/* Patient Browser */}
+        <div className="lg:col-span-3 space-y-6">
+           <div className="space-y-3 px-1">
+              <p className="text-[10px] font-black text-neutral-300 uppercase tracking-widest px-2">Registry Registry</p>
+              <div className="relative group">
+                 <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-300 w-3.5 h-3.5 group-focus-within:text-black transition-colors" />
+                 <input 
+                   type="text"
+                   placeholder="Name or ID..."
+                   value={searchQuery}
+                   onChange={(e) => setSearchQuery(e.target.value)}
+                   className="w-full pl-10 pr-4 py-2 bg-neutral-100/50 rounded-xl border-dashed border border-transparent focus:bg-white focus:border-neutral-200 outline-none text-[12px] font-bold transition-all"
+                 />
+              </div>
+           </div>
+
+           <div className="space-y-1 max-h-[600px] overflow-y-auto pr-1">
+             {filteredRecords.map(record => (
+               <button 
+                 key={record.id}
+                 onClick={() => setSelectedRecord(record)}
+                 className={cn(
+                   "w-full px-5 py-4 rounded-xl transition-all duration-300 flex items-center gap-4 group border border-transparent",
+                   selectedRecord?.id === record.id 
+                   ? "bg-black text-white shadow-lg scale-[1.02]" 
+                   : "bg-white text-neutral-400 hover:bg-neutral-50"
+                 )}
+               >
+                  <Fingerprint size={16} className={selectedRecord?.id === record.id ? "text-white" : "text-neutral-200 group-hover:text-black"} />
+                  <div className="text-left">
+                     <p className="text-[12px] font-black uppercase tracking-tight leading-none">{record.name}</p>
+                     <p className="text-[8px] font-black opacity-40 tracking-widest mt-1 uppercase">{record.id}</p>
+                  </div>
+               </button>
+             ))}
+           </div>
         </div>
 
-        <div className="p-8 rounded-2xl bg-white border border-black/10 backdrop-blur overflow-hidden relative mb-8 shadow-sm">
-          <div className="absolute top-0 right-0 w-80 h-80 bg-black/5 rounded-full blur-3xl -z-10"></div>
-
-          <div className="flex items-start gap-6 mb-8 pb-8 border-b border-black/10">
-            <div className="w-20 h-20 rounded-xl bg-black flex items-center justify-center flex-shrink-0">
-              <span className="text-3xl font-bold text-white">JE</span>
-            </div>
-            <div className="flex-1">
-              <h2 className="text-3xl font-bold text-black">{patient.name}</h2>
-              <div className="flex flex-wrap gap-4 mt-3 text-sm">
-                <span className="flex items-center gap-2 text-neutral-600">
-                  <Calendar size={16} className="text-black" />
-                  {patient.dob}
-                </span>
-                <span className="flex items-center gap-2 text-neutral-600">
-                  <Droplet size={16} className="text-black" />
-                  Blood Type: {patient.bloodType}
-                </span>
-                <span className="font-mono text-black font-semibold">{patient.mrn}</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="mb-8 p-6 rounded-xl bg-black/[0.02] border border-black/10">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <Star className="w-6 h-6 text-black" fill="currentColor" />
-                <span className="font-semibold text-neutral-700">Trust Score</span>
-              </div>
-              <span className="text-3xl font-bold text-black">{patient.trustScore}</span>
-            </div>
-            <div className="w-full h-2 bg-neutral-200 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-black"
-                style={{ width: `${patient.trustScore}%` }}
-              ></div>
-            </div>
-            <p className="text-xs text-neutral-500 mt-3">Based on data consistency, recency, and source quality</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div>
-              <h3 className="flex items-center gap-2 font-semibold text-black mb-4 text-lg">
-                <Pill size={20} className="text-black" />
-                Current Medications
-              </h3>
-              <div className="space-y-3">
-                {patient.medications.map((med, i) => (
-                  <div key={i} className="p-4 rounded-lg bg-black/[0.02] border border-black/10">
-                    <p className="font-semibold text-black">{med.name}</p>
-                    <div className="flex justify-between text-sm text-neutral-500 mt-2">
-                      <span>{med.dose}</span>
-                      <span>{med.frequency}</span>
-                    </div>
+        {/* Detailed View */}
+        <div className="lg:col-span-9">
+           <AnimatePresence mode="wait">
+             {selectedRecord && (
+               <motion.div 
+                key={selectedRecord.id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                className="bg-white rounded-[32px] p-8 md:p-12 border border-neutral-100 shadow-[0_4px_12px_rgba(0,0,0,0.01)] space-y-12"
+               >
+                  <div className="flex flex-col md:flex-row md:items-start justify-between gap-8 pb-8 border-b border-neutral-50">
+                     <div className="flex items-center gap-8">
+                        <div className="w-20 h-20 rounded-3xl bg-neutral-900 border-[4px] border-neutral-50 flex items-center justify-center text-2xl font-black text-white shadow-sm">
+                           {selectedRecord.name.split(' ').map(n => n[0]).join('')}
+                        </div>
+                        <div className="space-y-2">
+                           <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-emerald-50 text-emerald-600 text-[9px] font-black uppercase tracking-widest">
+                              <Zap size={10} className="fill-emerald-600" />
+                              Master Identity
+                           </div>
+                           <h2 className="text-4xl font-black text-black tracking-tightest uppercase">{selectedRecord.name}</h2>
+                           <div className="flex gap-6">
+                              <div className="flex items-center gap-2.5">
+                                 <Calendar size={14} className="text-neutral-200" />
+                                 <span className="text-[11px] font-black text-neutral-400">{selectedRecord.birthDate}</span>
+                              </div>
+                              <div className="flex items-center gap-2.5">
+                                 <Fingerprint size={14} className="text-neutral-200" />
+                                 <span className="text-[11px] font-black text-neutral-400 uppercase">{selectedRecord.identifiers.ssn}</span>
+                              </div>
+                           </div>
+                        </div>
+                     </div>
+                     <div className="text-left md:text-right pt-4 md:pt-0">
+                        <p className="text-[9px] font-black text-neutral-300 uppercase tracking-widest leading-none mb-1">Curation Hash</p>
+                        <p className="font-mono text-[10px] text-neutral-200">0x74...F92B</p>
+                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
 
-            <div>
-              <h3 className="flex items-center gap-2 font-semibold text-black mb-4 text-lg">
-                <Clock size={20} className="text-black" />
-                Recent Visits
-              </h3>
-              <div className="space-y-3">
-                {patient.visits.map((visit, i) => (
-                  <div key={i} className="p-4 rounded-lg bg-black/[0.02] border border-black/10">
-                    <p className="font-semibold text-black">{visit.type}</p>
-                    <div className="flex justify-between text-sm text-neutral-500 mt-2">
-                      <span>{visit.date}</span>
-                      <span className="text-black">{visit.notes}</span>
-                    </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                     <div className="space-y-8">
+                        <h4 className="flex items-center gap-2 text-sm font-black text-black tracking-widest uppercase">
+                           <Activity size={14} className="text-blue-500" />
+                           Data Provenance
+                        </h4>
+                        <div className="space-y-2">
+                           {selectedRecord.mergedSources.map((source, i) => (
+                             <div key={i} className="flex items-center justify-between p-5 rounded-2xl bg-neutral-50 border border-transparent hover:border-neutral-100 transition-all group">
+                                <div className="flex items-center gap-4">
+                                   <div className="w-8 h-8 rounded-lg bg-white border border-neutral-100 flex items-center justify-center text-[10px] font-black text-neutral-200 group-hover:bg-black group-hover:text-white transition-all">
+                                      0{i+1}
+                                   </div>
+                                   <span className="text-[11px] font-black text-neutral-500 uppercase tracking-wide">{source}</span>
+                                </div>
+                                <CheckCircle size={14} className="text-emerald-400 opacity-60" />
+                             </div>
+                           ))}
+                        </div>
+
+                        <div className="p-6 rounded-[24px] border border-neutral-50 space-y-4">
+                           <div className="flex justify-between items-end">
+                              <p className="text-[9px] font-black text-neutral-200 uppercase tracking-widest">Precision Score</p>
+                              <p className="text-lg font-black text-black">98.4%</p>
+                           </div>
+                           <div className="h-1.5 w-full bg-neutral-50 rounded-full overflow-hidden">
+                              <motion.div 
+                                initial={{ width: 0 }}
+                                animate={{ width: '98.4%' }}
+                                transition={{ duration: 1.5 }}
+                                className="h-full bg-black rounded-full"
+                              />
+                           </div>
+                        </div>
+                     </div>
+
+                     <div className="space-y-8">
+                        <h4 className="flex items-center gap-2 text-sm font-black text-black tracking-widest uppercase">
+                           <Clock size={14} className="text-purple-500" />
+                           History Sequence
+                        </h4>
+                        <div className="space-y-6 relative pl-4 border-l border-neutral-50">
+                           {[
+                              { label: 'Baseline sync', source: 'Lumiere Core v1.3', sub: 'Verified 4 artifacts.' },
+                              { label: 'Duplicate Resolv', source: 'Manual Audit', sub: 'Merged Metropolitan identities.' }
+                           ].map((item, i) => (
+                              <div key={i} className="space-y-2 relative">
+                                 <div className="absolute -left-[20.5px] top-1.5 w-3 h-3 rounded-full border-2 border-white bg-neutral-200 shadow-sm" />
+                                 <p className="text-[8px] font-black text-neutral-200 uppercase tracking-widest">{item.label}</p>
+                                 <div className="p-5 rounded-[24px] bg-neutral-50 border border-transparent hover:border-neutral-100 transition-all cursor-default">
+                                    <p className="text-[11px] font-black text-black uppercase tracking-tight">{item.source}</p>
+                                    <p className="text-[10px] font-bold text-neutral-400 mt-0.5 italic leading-relaxed opacity-60">{item.sub}</p>
+                                 </div>
+                              </div>
+                           ))}
+                        </div>
+                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex gap-4">
-          <button className="flex-1 px-6 py-3 rounded-lg bg-black text-white font-semibold transition-all duration-300 hover:bg-neutral-800">
-            Download Record
-          </button>
-          <button className="flex-1 px-6 py-3 rounded-lg border border-black text-black font-semibold hover:bg-black/5 transition-all duration-300">
-            Export to EHR
-          </button>
+               </motion.div>
+             )}
+           </AnimatePresence>
         </div>
       </div>
     </div>

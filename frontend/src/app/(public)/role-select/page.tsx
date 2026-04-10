@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Stethoscope, UserCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -7,9 +8,21 @@ import { motion } from 'framer-motion';
 export default function RoleSelectPage() {
   const router = useRouter();
 
+  useEffect(() => {
+    const isComplete = localStorage.getItem('onboardingComplete');
+    if (isComplete === 'true') {
+      router.push('/dashboard');
+    }
+  }, [router]);
+
   const handleRoleSelect = (role: 'doctor' | 'patient') => {
     localStorage.setItem('role', role);
-    router.push('/dashboard');
+    const isComplete = localStorage.getItem('onboardingComplete');
+    if (isComplete === 'true') {
+      router.push('/dashboard');
+    } else {
+      router.push('/complete-profile');
+    }
   };
 
   return (
