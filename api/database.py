@@ -4,8 +4,11 @@ Uses the same SQLAlchemy models as the rest of the project.
 """
 
 import os
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",

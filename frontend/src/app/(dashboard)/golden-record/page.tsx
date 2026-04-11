@@ -46,8 +46,8 @@ export default function GoldenRecordPage() {
         const sourceNames = systems.map((s: SourceSystem) => s.system_name);
         const mapped: Record[] = goldenRecords.map((g: GoldenRecord) => ({
           id: g.id.slice(0, 12),
-          name: `Golden Record ${g.golden_patient_id.slice(0, 8)}`,
-          birthDate: g.created_at.slice(0, 10),
+          name: g.patient_name || `Golden Record ${g.golden_patient_id.slice(0, 8)}`,
+          birthDate: g.patient_dob || g.created_at.slice(0, 10),
           identifiers: { ssn: '***-**-' + g.golden_patient_id.slice(-4) },
           source: 'Master Patient Index',
           mergedSources: sourceNames.slice(0, g.source_links.length || 1),

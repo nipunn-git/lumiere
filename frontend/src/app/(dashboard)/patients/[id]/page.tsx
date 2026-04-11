@@ -291,15 +291,20 @@ export default function PatientDetailPage() {
     try {
       const result = await extractPdfOcr(file);
       const fields = result.extracted_fields;
+      const garbled = (result as any).text_quality === 'garbled';
       setPdfReviewForm({
         date: new Date().toISOString().slice(0, 10),
         docType: 'lab_report',
         sourceSystem: 'PDF Archive',
         diagnosis: fields.diagnosis || '',
         medications: fields.medications || '',
-        findings: fields.findings || result.raw_text.slice(0, 400),
+        findings: fields.findings || '',
       });
-      showToast(`OCR complete (${result.method}, ${result.page_count} page${result.page_count !== 1 ? 's' : ''})`);
+      if (garbled) {
+        showToast('PDF uses an embedded font that could not be decoded — please fill fields manually', 'error');
+      } else {
+        showToast(`OCR complete (${result.method}, ${result.page_count} page${result.page_count !== 1 ? 's' : ''})`);
+      }
     } catch (err: any) {
       // Fallback: let user fill in manually
       setPdfReviewForm({

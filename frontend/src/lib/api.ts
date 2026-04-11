@@ -95,6 +95,9 @@ export interface GoldenRecord {
   created_at: string;
   updated_at: string;
   source_links: MPISourceLink[];
+  patient_name: string | null;
+  patient_dob: string | null;
+  patient_gender: string | null;
 }
 
 export interface MPISourceLink {
@@ -136,9 +139,17 @@ export interface QueryResponse {
 
 // ── Patient endpoints ────────────────────────────────────────────────────────
 
-export async function fetchPatients(query?: string): Promise<Patient[]> {
+export async function fetchPatients(query?: string, searchType?: 'name' | 'phone' | 'gov'): Promise<Patient[]> {
   const params = new URLSearchParams({ limit: '50' });
-  if (query) params.set('q', query);
+  if (query) {
+    if (searchType === 'phone') {
+      params.set('phone', query);
+    } else if (searchType === 'gov') {
+      params.set('gov_id', query);
+    } else {
+      params.set('q', query);
+    }
+  }
   const pts = await api<Patient[]>(`/api/patients?${params}`);
   
   // Apply compatibility mappings

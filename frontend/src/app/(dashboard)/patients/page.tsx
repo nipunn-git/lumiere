@@ -193,7 +193,7 @@ export default function PatientsPage() {
   const [patients, setPatients] = useState<APIPatient[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchId, setSearchId] = useState('');
-  const [searchType, setSearchType] = useState<'phone' | 'gov'>('phone');
+  const [searchType, setSearchType] = useState<'name' | 'phone' | 'gov'>('name');
   const [searchError, setSearchError] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -209,7 +209,8 @@ export default function PatientsPage() {
     if (!searchId.trim()) return;
     setSearchError('');
     try {
-      const results = await fetchPatients(searchId.trim());
+      const apiSearchType = searchType === 'phone' ? 'phone' : searchType === 'gov' ? 'gov' : 'name';
+      const results = await fetchPatients(searchId.trim(), apiSearchType);
       if (results.length > 0) {
         router.push(`/patients/${results[0].id}`);
       } else {
@@ -255,6 +256,16 @@ export default function PatientsPage() {
           />
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setSearchType('name')}
+            className={`px-4 py-1.5 rounded-full text-[13px] font-medium transition-all duration-150 ${
+              searchType === 'name'
+                ? 'bg-black text-white'
+                : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200'
+            }`}
+          >
+            Name
+          </button>
           <button
             onClick={() => setSearchType('phone')}
             className={`px-4 py-1.5 rounded-full text-[13px] font-medium transition-all duration-150 ${

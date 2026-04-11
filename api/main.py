@@ -27,6 +27,9 @@ Run with:
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))  # make root importable
 
+from dotenv import load_dotenv
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
+
 from datetime import datetime
 from typing import Optional, List
 import uuid
@@ -67,13 +70,13 @@ app = FastAPI(
 # ─── CORS — allow your frontend origin ──────────────────────────────────────
 _cors_env = os.getenv(
     "CORS_ORIGINS",
-    "http://localhost:3000,http://localhost:5173,http://localhost:4200",
+    "http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003,http://localhost:5173,http://localhost:4200",
 )
 ALLOWED_ORIGINS = [o.strip() for o in _cors_env.split(",") if o.strip()]
 
-# If CORS_ORIGINS contains a wildcard pattern like "*.vercel.app" we need
-# allow_origin_regex instead of allow_origins.
-_cors_regex = os.getenv("CORS_ORIGIN_REGEX", "")  # e.g. https://.*\.vercel\.app
+# Allow any localhost port (covers Next.js moving to 3001/3002/etc when ports are busy)
+# Also supports custom regex via CORS_ORIGIN_REGEX env var (e.g. "https://.*\.vercel\.app")
+_cors_regex = os.getenv("CORS_ORIGIN_REGEX", r"http://localhost:\d+")
 
 app.add_middleware(
     CORSMiddleware,
@@ -232,6 +235,8 @@ def _auto_embed_on_startup():
 @app.get("/api/patients", response_model=List[PatientOut], tags=["Patients"])
 def search_patients(
     q: Optional[str] = Query(None, description="Search by first or last name"),
+    phone: Optional[str] = Query(None, description="Search by phone number"),
+    gov_id: Optional[str] = Query(None, description="Search by government / FHIR ID"),
     dob: Optional[str] = Query(None, description="Filter by date of birth YYYY-MM-DD"),
     gender: Optional[str] = Query(None),
     city: Optional[str] = Query(None),
@@ -243,18 +248,30 @@ def search_patients(
 ):
     """
     Full-text patient search. Used by the frontend patient search bar.
-    Supports name, DOB, gender, city, state, ZIP filters.
+    Supports name (tokenised), phone, gov_id, DOB, gender, city, state, ZIP filters.
     """
     query = db.query(FHIRPatient)
 
     if q:
-        like = f"%{q}%"
-        query = query.filter(
-            or_(
-                FHIRPatient.family_name.ilike(like),
-                FHIRPatient.given_name.ilike(like),
+        # Tokenise so "John Terry" matches given_name="John" + family_name="Terry"
+        tokens = q.strip().split()
+        for token in tokens:
+            like = f"%{token}%"
+            query = query.filter(
+                or_(
+                    FHIRPatient.family_name.ilike(like),
+                    FHIRPatient.given_name.ilike(like),
+                    FHIRPatient.phone.ilike(like),
+                    FHIRPatient.fhir_id.ilike(like),
+                )
             )
-        )
+
+    if phone:
+        query = query.filter(FHIRPatient.phone.ilike(f"%{phone}%"))
+
+    if gov_id:
+        query = query.filter(FHIRPatient.fhir_id.ilike(f"%{gov_id}%"))
+
     if dob:
         query = query.filter(FHIRPatient.dob == dob)
     if gender:
@@ -432,6 +449,27 @@ def get_duplicate(candidate_id: uuid.UUID, db: Session = Depends(get_db)):
 # GOLDEN RECORDS (Master Patient Index)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def _enrich_golden(records: list, db: Session) -> list:
+    """Join fhir_patients to attach real patient name/dob/gender to golden record responses."""
+    patient_ids = [r.golden_patient_id for r in records]
+    patients = {}
+    if patient_ids:
+        patients = {
+            p.id: p
+            for p in db.query(FHIRPatient).filter(FHIRPatient.id.in_(patient_ids)).all()
+        }
+    result = []
+    for r in records:
+        base = GoldenRecordOut.model_validate(r).model_copy(update={})
+        p = patients.get(r.golden_patient_id)
+        if p:
+            base.patient_name = f"{p.given_name or ''} {p.family_name or ''}".strip() or None
+            base.patient_dob = str(p.dob) if p.dob else None
+            base.patient_gender = p.gender
+        result.append(base)
+    return result
+
+
 @app.get("/api/golden-records", response_model=List[GoldenRecordOut], tags=["Golden Records"])
 def list_golden_records(
     status: Optional[str] = Query(None, description="AUTO_MATCHED | MANUAL_REVIEW | CONFIRMED | REJECTED"),
@@ -449,12 +487,13 @@ def list_golden_records(
     if min_confidence > 0:
         query = query.filter(MasterPatientIndex.confidence_score >= min_confidence)
 
-    return (
+    rows = (
         query.order_by(MasterPatientIndex.confidence_score.desc().nullslast())
         .offset(skip)
         .limit(limit)
         .all()
     )
+    return _enrich_golden(rows, db)
 
 
 @app.get("/api/golden-records/stats", tags=["Golden Records"])
@@ -478,7 +517,7 @@ def get_golden_record(mpi_id: uuid.UUID, db: Session = Depends(get_db)):
     )
     if not record:
         raise HTTPException(status_code=404, detail="Golden record not found")
-    return record
+    return _enrich_golden([record], db)[0]
 
 
 @app.patch("/api/golden-records/{mpi_id}", response_model=GoldenRecordOut, tags=["Golden Records"])
@@ -974,6 +1013,16 @@ def identify_records(body: IdentifyIn, db: Session = Depends(get_db)):
             "source_system": "EHR",
         })
 
+    # Pre-fetch all already-resolved patient IDs (CONFIRMED or REJECTED) so we
+    # can skip pairs that have already been acted on in a previous session.
+    resolved_links = (
+        db.query(MPISourceLink.source_patient_id)
+        .join(MasterPatientIndex, MPISourceLink.mpi_id == MasterPatientIndex.id)
+        .filter(MasterPatientIndex.resolution_status.in_(["CONFIRMED", "REJECTED"]))
+        .all()
+    )
+    resolved_patient_ids = {str(row.source_patient_id) for row in resolved_links}
+
     # Compute pairwise candidate pairs among matched patients
     auto_merges = []
     pending_review = []
@@ -982,6 +1031,12 @@ def identify_records(body: IdentifyIn, db: Session = Depends(get_db)):
     for i in range(len(matching)):
         for j in range(i + 1, len(matching)):
             a, b = matching[i], matching[j]
+
+            # Skip if either patient has already been confirmed/rejected — they
+            # already exist in the Patient Registry, so don't show them again.
+            if str(a.id) in resolved_patient_ids or str(b.id) in resolved_patient_ids:
+                continue
+
             scores = _compute_similarity(a, b)
             composite = scores["composite_score"]
 
@@ -1055,6 +1110,9 @@ def identify_records(body: IdentifyIn, db: Session = Depends(get_db)):
 def resolve_merge(body: ResolveMergeIn, db: Session = Depends(get_db)):
     """
     Accept or reject a proposed merge pair.
+    pair_id format: "{uuid_a}-{uuid_b}" (73 chars — two 36-char UUIDs joined by a dash).
+    On 'merge': creates a CONFIRMED MasterPatientIndex golden record linking both patients.
+    On 'separate': acknowledges and returns immediately.
     """
     pair_id = body.pair_id.strip()
     action = body.action.strip()
@@ -1062,11 +1120,89 @@ def resolve_merge(body: ResolveMergeIn, db: Session = Depends(get_db)):
     if action not in ("merge", "separate"):
         raise HTTPException(status_code=400, detail="action must be 'merge' or 'separate'")
 
-    # Try to parse patient IDs from pair_id (format: "uuid1-uuid2" or "uuid1uuid2")
-    # UUIDs are 36 chars; pair_id is "{uuid}-{uuid}" = 73 chars
-    parts = pair_id.rsplit("-", 5)  # UUIDs have 4 dashes each, last segment is second UUID tail
-    # Simpler: just acknowledge the action
-    return {"status": "ok", "pair_id": pair_id, "action": action}
+    if action == "separate":
+        return {"status": "ok", "pair_id": pair_id, "action": "separate"}
+
+    # --- Parse the two patient UUIDs from pair_id ---
+    # Format: "{36-char-uuid_a}-{36-char-uuid_b}"  → total 73 chars
+    if len(pair_id) < 73:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid pair_id format (expected 73 chars, got {len(pair_id)})",
+        )
+    patient_a_str = pair_id[:36]
+    patient_b_str = pair_id[37:73]
+
+    try:
+        patient_a_id = uuid.UUID(patient_a_str)
+        patient_b_id = uuid.UUID(patient_b_str)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="pair_id does not contain valid UUIDs")
+
+    # Verify both patients exist
+    patient_a = db.query(FHIRPatient).filter(FHIRPatient.id == patient_a_id).first()
+    patient_b = db.query(FHIRPatient).filter(FHIRPatient.id == patient_b_id).first()
+    if not patient_a or not patient_b:
+        raise HTTPException(status_code=404, detail="One or both patients not found")
+
+    # Check if a golden record already exists for this pair to avoid duplicates
+    existing_link = (
+        db.query(MPISourceLink)
+        .filter(MPISourceLink.source_patient_id.in_([patient_a_id, patient_b_id]))
+        .join(MasterPatientIndex)
+        .filter(MasterPatientIndex.resolution_status == "CONFIRMED")
+        .first()
+    )
+    if existing_link:
+        golden = db.query(MasterPatientIndex).filter(
+            MasterPatientIndex.id == existing_link.mpi_id
+        ).first()
+        return {
+            "status": "already_merged",
+            "pair_id": pair_id,
+            "action": action,
+            "golden_record_id": str(golden.id) if golden else None,
+        }
+
+    # Create the golden record (MasterPatientIndex)
+    golden_record = MasterPatientIndex(
+        id=uuid.uuid4(),
+        golden_patient_id=patient_a_id,  # patient A is the canonical identity
+        confidence_score=0.95,
+        resolution_status="CONFIRMED",
+        resolved_by="clinician",
+        resolved_at=datetime.utcnow(),
+        notes=(
+            f"Manually confirmed merge of '{patient_a.given_name or ''} {patient_a.family_name or ''}'.strip() "
+            f"with '{patient_b.given_name or ''} {patient_b.family_name or ''}'.strip()"
+        ),
+    )
+    db.add(golden_record)
+    db.flush()  # get the generated ID
+
+    # Link both source patients to this golden record
+    db.add(MPISourceLink(
+        id=uuid.uuid4(),
+        mpi_id=golden_record.id,
+        source_patient_id=patient_a_id,
+        link_weight=1.0,
+    ))
+    db.add(MPISourceLink(
+        id=uuid.uuid4(),
+        mpi_id=golden_record.id,
+        source_patient_id=patient_b_id,
+        link_weight=0.95,
+    ))
+    db.commit()
+    db.refresh(golden_record)
+
+    return {
+        "status": "merged",
+        "pair_id": pair_id,
+        "action": "merge",
+        "golden_record_id": str(golden_record.id),
+        "golden_patient_id": str(golden_record.golden_patient_id),
+    }
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1300,23 +1436,86 @@ async def ingest_pdf_file(
             detail="Could not extract text from PDF. For scanned PDFs, ensure Tesseract is installed."
         )
 
-    # Parse common medical fields from free text using heuristic regex
-    def find(pattern, text, default=""):
-        m = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
-        return m.group(1).strip() if m else default
+    # ── Text quality check ──────────────────────────────────────────────────
+    # PDFs with non-standard embedded fonts produce garbled Unicode (Private Use Area
+    # chars, replacement chars, etc.). Detect this so we don't send garbage to the AI
+    # or display it to the user.
+    def _is_readable(text: str) -> bool:
+        if not text.strip():
+            return False
+        bad = sum(
+            1 for c in text
+            if (not c.isprintable() and c not in '\n\r\t')
+            or 0xE000 <= ord(c) <= 0xF8FF   # Unicode Private Use Area
+            or 0xFFF0 <= ord(c) <= 0xFFFF   # Unicode Specials block
+        )
+        return (bad / len(text)) < 0.25
 
-    diagnosis  = find(r'(?:diagnosis|impression|assessment)[:\s]+([^\n.]{5,120})', extracted_text)
-    medications = find(r'(?:medications?|drugs?|prescriptions?)[:\s]+([^\n]{5,200})', extracted_text)
-    findings   = find(r'(?:findings?|results?|report|notes?)[:\s]+([^\n]{5,300})', extracted_text)
+    text_ok = _is_readable(extracted_text)
+
+    # ── AI-powered field extraction via Groq ────────────────────────────────
+    # Try Groq first (LLaMA 3) for accurate structured extraction.
+    # Falls back to regex heuristics if Groq key is absent or call fails.
+    groq_api_key = os.getenv("GROQ_API_KEY")
+    diagnosis = medications = findings = ""
+
+    if groq_api_key and text_ok:
+        try:
+            from groq import Groq as _Groq
+            _groq_client = _Groq(api_key=groq_api_key)
+            truncated = extracted_text[:6000]  # keep within token budget
+            prompt = (
+                "You are a medical document parser. Extract exactly three fields from the "
+                "clinical document text below. Reply ONLY with a JSON object — no markdown, "
+                "no explanation — with these exact keys:\n"
+                '  "diagnosis": one concise sentence (max 120 chars) summarising the primary diagnosis or impression. Empty string if absent.\n'
+                '  "medications": comma-separated list of medication names + dosages found. Empty string if absent.\n'
+                '  "findings": 2-4 sentence summary of the KEY clinical findings, lab results, or notable observations. Empty string if absent.\n\n'
+                f"DOCUMENT TEXT:\n{truncated}"
+            )
+            chat = _groq_client.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.1,
+                max_tokens=512,
+            )
+            import json as _json
+            raw_json = chat.choices[0].message.content.strip()
+            # Strip any accidental markdown fences
+            if raw_json.startswith("```"):
+                raw_json = re.sub(r"^```[a-z]*\n?", "", raw_json)
+                raw_json = re.sub(r"\n?```$", "", raw_json)
+            parsed = _json.loads(raw_json)
+            diagnosis   = str(parsed.get("diagnosis", "")).strip()
+            medications = str(parsed.get("medications", "")).strip()
+            findings    = str(parsed.get("findings", "")).strip()
+        except Exception:
+            pass  # fall through to regex
+
+    # Regex heuristic fallback (used when Groq is unavailable or fails)
+    # Only attempt if the extracted text is actually readable (not garbled font encoding)
+    if not any([diagnosis, medications, findings]) and text_ok:
+        def find(pattern, text, default=""):
+            m = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
+            return m.group(1).strip() if m else default
+
+        diagnosis   = find(r'(?:diagnosis|impression|assessment)[:\s]+([^\n.]{5,120})', extracted_text)
+        medications = find(r'(?:medications?|drugs?|prescriptions?)[:\s]+([^\n]{5,200})', extracted_text)
+        findings    = find(r'(?:findings?|results?|report|notes?)[:\s]+([^\n]{5,300})', extracted_text)
+        # Last resort: first 400 chars of clean readable text
+        if not findings:
+            clean = re.sub(r'^[\s\d]+', '', extracted_text).strip()
+            findings = clean[:400]
 
     return {
-        "raw_text": extracted_text,
+        "raw_text": extracted_text if text_ok else "",
         "page_count": page_count,
         "method": method_used,
+        "text_quality": "ok" if text_ok else "garbled",
         "extracted_fields": {
             "diagnosis": diagnosis,
             "medications": medications,
-            "findings": findings or extracted_text[:400],
+            "findings": findings,
         },
     }
 

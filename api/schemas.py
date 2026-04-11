@@ -112,6 +112,10 @@ class GoldenRecordOut(_Base):
     created_at: datetime
     updated_at: datetime
     source_links: List[MPISourceLinkOut] = []
+    # Enriched fields — joined from fhir_patients at query time
+    patient_name: Optional[str] = None
+    patient_dob: Optional[str] = None
+    patient_gender: Optional[str] = None
 
 
 class PatientCreateIn(BaseModel):

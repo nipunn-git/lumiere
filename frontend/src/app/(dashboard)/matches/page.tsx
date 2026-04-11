@@ -26,7 +26,9 @@ export default function MatchesPage() {
 
   const handleResolve = async (pairId: string, action: 'merge' | 'separate') => {
     try {
+      // Backend creates the MasterPatientIndex golden record + source links on merge
       await resolveMergeRecord(pairId, action);
+
       // Remove from local UI state
       if (lumiereResult?.action_report) {
          setLumiereLResult({
@@ -38,7 +40,7 @@ export default function MatchesPage() {
            }
          });
       }
-      setToast(action === 'merge' ? 'Records merged successfully' : 'Records confirmed separate');
+      setToast(action === 'merge' ? 'Records merged & added to patient registry' : 'Records confirmed separate');
     } catch (error) {
       setToast('Resolution failed');
     }
@@ -58,7 +60,7 @@ export default function MatchesPage() {
               value={lumiereQuery}
               onChange={(e) => setLumiereQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleLumiereSearch()}
-              placeholder="Deep Search Identity resolution by name, phone, or email..."
+              placeholder="Deep Search Identity resolution by name, phone, or email... For ex- John"
               className="w-full bg-neutral-50 border border-black/5 rounded-xl py-3 pl-12 pr-4 text-sm font-medium focus:bg-white focus:border-black/20 transition-all outline-none"
             />
           </div>
