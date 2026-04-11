@@ -15,9 +15,7 @@ export interface ShimmerTextProps {
 export default function ShimmerText({
   children,
   className,
-  variant = 'slate',
   duration = 4.0,
-  delay = 0,
 }: ShimmerTextProps) {
   return (
     <motion.span

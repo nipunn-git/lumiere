@@ -5,7 +5,6 @@ import { Users, Sparkles, Stethoscope } from 'lucide-react';
 import { motion, Variants } from 'framer-motion';
 import { InteractiveImageAccordion } from '@/components/ui/interactive-image-accordion';
 import { NeonButton } from '@/components/ui/neon-button';
-import { Mail, MessageSquare, User } from 'lucide-react';
 
 export default function Home() {
   const popLayerVariants: Variants = {

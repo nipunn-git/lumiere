@@ -338,7 +338,7 @@ export async function ingestCsv(file: File): Promise<Patient[]> {
 
 // ── Entity matching endpoints ────────────────────────────────
 
-export async function runEntityMatching(threshold = 0.5) {
+export async function runEntityMatching() {
   return api('/api/match/run', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
