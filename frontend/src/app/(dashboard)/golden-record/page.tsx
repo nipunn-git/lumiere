@@ -9,12 +9,13 @@ import {
   Activity,
   Zap,
   Fingerprint,
-  Database,
   Search,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/cn';
+import { getGoldenRecords, getSourceSystems } from '@/lib/api';
+import type { GoldenRecord, SourceSystem } from '@/lib/api';
 
 interface Record {
   id: string;
@@ -24,6 +25,9 @@ interface Record {
   source: string;
   mergedSources: string[];
   lastUpdatedAt: string;
+  confidence: number;
+  status: string;
+  linkCount: number;
 }
 
 export default function GoldenRecordPage() {
@@ -35,10 +39,25 @@ export default function GoldenRecordPage() {
   useEffect(() => {
     const fetchRecords = async () => {
       try {
-        const response = await fetch('http://localhost:3001/api/records');
-        const data = await response.json();
-        setRecords(data);
-        if (data.length > 0) setSelectedRecord(data[0]);
+        const [goldenRecords, systems] = await Promise.all([
+          getGoldenRecords(),
+          getSourceSystems(),
+        ]);
+        const sourceNames = systems.map((s: SourceSystem) => s.system_name);
+        const mapped: Record[] = goldenRecords.map((g: GoldenRecord) => ({
+          id: g.id.slice(0, 12),
+          name: `Golden Record ${g.golden_patient_id.slice(0, 8)}`,
+          birthDate: g.created_at.slice(0, 10),
+          identifiers: { ssn: '***-**-' + g.golden_patient_id.slice(-4) },
+          source: 'Master Patient Index',
+          mergedSources: sourceNames.slice(0, g.source_links.length || 1),
+          lastUpdatedAt: g.updated_at,
+          confidence: g.confidence_score ?? 0,
+          status: g.resolution_status ?? 'UNKNOWN',
+          linkCount: g.source_links.length,
+        }));
+        setRecords(mapped);
+        if (mapped.length > 0) setSelectedRecord(mapped[0]);
       } catch (error) {
         console.error('Error fetching records:', error);
       } finally {
@@ -189,16 +208,20 @@ export default function GoldenRecordPage() {
 
                         <div className="p-6 rounded-[24px] border border-neutral-50 space-y-4">
                            <div className="flex justify-between items-end">
-                              <p className="text-[9px] font-black text-neutral-200 uppercase tracking-widest">Precision Score</p>
-                              <p className="text-lg font-black text-black">98.4%</p>
+                              <p className="text-[9px] font-black text-neutral-200 uppercase tracking-widest">Confidence Score</p>
+                              <p className="text-lg font-black text-black">{((selectedRecord.confidence ?? 0) * 100).toFixed(1)}%</p>
                            </div>
                            <div className="h-1.5 w-full bg-neutral-50 rounded-full overflow-hidden">
                               <motion.div 
                                 initial={{ width: 0 }}
-                                animate={{ width: '98.4%' }}
+                                animate={{ width: `${(selectedRecord.confidence ?? 0) * 100}%` }}
                                 transition={{ duration: 1.5 }}
                                 className="h-full bg-black rounded-full"
                               />
+                           </div>
+                           <div className="flex justify-between text-[9px] font-bold text-neutral-300 uppercase tracking-widest">
+                              <span>Status: {selectedRecord.status}</span>
+                              <span>{selectedRecord.linkCount} source links</span>
                            </div>
                         </div>
                      </div>

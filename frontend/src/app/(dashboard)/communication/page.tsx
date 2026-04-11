@@ -6,12 +6,10 @@ import {
   FileUp, 
   Search, 
   User, 
-  Send, 
   Volume2, 
   FileText, 
   CheckCircle2, 
   Sparkles,
-  Zap,
   Clock,
   MessageSquare,
 } from 'lucide-react';
@@ -35,9 +33,9 @@ export default function CommunicationPage() {
   useEffect(() => {
     const fetchPatients = async () => {
       try {
-        const res = await fetch('http://localhost:3001/api/records');
-        const data = await res.json();
-        setPatients(data);
+        const { fetchPatients: fp } = await import('@/lib/api');
+        const data = await fp();
+        setPatients(data.map(p => ({ id: p.id, name: `${p.given_name ?? ''} ${p.family_name ?? ''}`.trim() })));
       } catch (e) {
         console.error('Failed to fetch patients', e);
       }
