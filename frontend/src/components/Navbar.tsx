@@ -51,7 +51,7 @@ export default function Navbar() {
       >
         <div className="max-w-7xl mx-auto px-8 h-full flex items-center justify-between">
           <Link href="/" className="flex items-center gap-3 group">
-            <div className="w-10 h-10 transition-all duration-300 group-hover:scale-110 bg-black rounded-xl flex items-center justify-center overflow-hidden shadow-md shadow-black/10 border border-neutral-800 p-0.5">
+            <div className="w-10 h-10 transition-all duration-300 group-hover:scale-110 flex items-center justify-center overflow-hidden">
               <img 
                 src="/assets/logo.png" 
                 alt="Lumiere Logo" 

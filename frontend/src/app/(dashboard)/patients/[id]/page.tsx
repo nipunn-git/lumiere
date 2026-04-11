@@ -485,7 +485,7 @@ export default function PatientDetailPage() {
   ];
 
   return (
-    <div className="page-enter flex flex-1 min-h-0">
+    <div className="page-enter flex overflow-hidden" style={{ height: 'calc(100vh - 88px)' }}>
       {/* ═══ MAIN CONTENT (flex-based layout with drawer) ═══ */}
       <div className="flex-1 overflow-y-auto transition-all duration-250">
         <div className="max-w-[1100px] mx-auto space-y-6 pb-12">

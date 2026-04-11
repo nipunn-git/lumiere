@@ -1,12 +1,18 @@
 'use client';
 
+import { useRef } from 'react';
 import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
   const router = useRouter();
+  const emailRef = useRef<HTMLInputElement>(null);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
+    const email = emailRef.current?.value || '';
+    // Persist email so Settings page can read it
+    const existing = JSON.parse(localStorage.getItem('userProfile') || '{}');
+    localStorage.setItem('userProfile', JSON.stringify({ ...existing, email }));
     router.push('/role-select');
   };
 
@@ -23,6 +29,7 @@ export default function LoginPage() {
             <div className="space-y-2">
               <label className="text-xs font-bold text-neutral-400 uppercase tracking-widest px-1">Email</label>
               <input
+                ref={emailRef}
                 type="email"
                 placeholder="dr.smith@hospital.com"
                 required

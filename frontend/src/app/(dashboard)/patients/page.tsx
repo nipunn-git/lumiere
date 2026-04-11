@@ -250,7 +250,7 @@ export default function PatientsPage() {
             value={searchId}
             onChange={(e) => { setSearchId(e.target.value); setSearchError(''); }}
             onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
-            placeholder="Search by phone number or government ID..."
+            placeholder="Search by name, phone number, or government ID..."
             className="w-full h-12 pl-12 pr-4 rounded-xl border-[1.5px] border-[#E0E0E0] text-[14px] outline-none transition-all focus:border-black"
           />
         </div>

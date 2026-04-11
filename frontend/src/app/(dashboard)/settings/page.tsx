@@ -20,7 +20,7 @@ import {
   CheckCircle,
   X,
 } from 'lucide-react';
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { cn } from '@/lib/cn';
 
 // ── Audit log types ──
@@ -73,6 +73,19 @@ interface ConnectedSource {
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('Profile');
+  const [profile, setProfile] = useState({ fullName: '', email: '', role: '', institution: '' });
+
+  useEffect(() => {
+    const stored = JSON.parse(localStorage.getItem('userProfile') || '{}');
+    const role = localStorage.getItem('role') || 'doctor';
+    const displayRole = role === 'patient' ? 'Patient' : 'Clinician';
+    setProfile({
+      fullName: stored.fullName || (role === 'patient' ? 'John Doe' : 'Dr. Parteek'),
+      email: stored.email || '',
+      role: displayRole,
+      institution: stored.institution || 'Lumiere Health',
+    });
+  }, []);
   const [toast, setToast] = useState<string | null>(null);
 
   // Audit log state
@@ -107,6 +120,8 @@ export default function SettingsPage() {
   const csvInputRef = useRef<HTMLInputElement>(null);
 
   const handleSave = () => {
+    const existing = JSON.parse(localStorage.getItem('userProfile') || '{}');
+    localStorage.setItem('userProfile', JSON.stringify({ ...existing, fullName: profile.fullName, email: profile.email, institution: profile.institution }));
     setToast('Settings saved');
     setTimeout(() => setToast(null), 3000);
   };
@@ -229,7 +244,7 @@ export default function SettingsPage() {
             <div className="space-y-6 max-w-lg">
               <div className="flex items-center gap-5 pb-6 border-b border-neutral-100">
                 <div className="w-[72px] h-[72px] rounded-full bg-neutral-100 flex items-center justify-center text-[22px] font-bold text-neutral-400 border border-neutral-200">
-                  P
+                  {profile.fullName?.[0]?.toUpperCase() || '?'}
                 </div>
                 <div>
                   <h3 className="text-[16px] font-semibold text-black">Profile picture</h3>
@@ -245,7 +260,8 @@ export default function SettingsPage() {
                   <label className="text-[12px] font-medium uppercase tracking-[0.08em] text-neutral-400 mb-1 block">Full name</label>
                   <input
                     type="text"
-                    defaultValue="Dr. Parteek"
+                    value={profile.fullName}
+                    onChange={e => setProfile(p => ({ ...p, fullName: e.target.value }))}
                     className="w-full h-10 px-3 rounded-lg border border-[#E0E0E0] text-[14px] outline-none focus:border-black transition-colors"
                   />
                 </div>
@@ -254,7 +270,9 @@ export default function SettingsPage() {
                   <div className="relative">
                     <input
                       type="email"
-                      defaultValue="parteek@lumiere.ai"
+                      value={profile.email}
+                      onChange={e => setProfile(p => ({ ...p, email: e.target.value }))}
+                      placeholder="your@email.com"
                       className="w-full h-10 px-3 pr-9 rounded-lg border border-[#E0E0E0] text-[14px] outline-none focus:border-black transition-colors"
                     />
                     <Mail className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-300 w-4 h-4" />
@@ -264,7 +282,7 @@ export default function SettingsPage() {
                   <label className="text-[12px] font-medium uppercase tracking-[0.08em] text-neutral-400 mb-1 block">Role</label>
                   <input
                     type="text"
-                    value="Clinician"
+                    value={profile.role}
                     disabled
                     className="w-full h-10 px-3 rounded-lg bg-neutral-50 border border-[#E0E0E0] text-[14px] text-neutral-400 cursor-not-allowed"
                   />
@@ -273,7 +291,8 @@ export default function SettingsPage() {
                   <label className="text-[12px] font-medium uppercase tracking-[0.08em] text-neutral-400 mb-1 block">Institution</label>
                   <input
                     type="text"
-                    defaultValue="Lumiere Health"
+                    value={profile.institution}
+                    onChange={e => setProfile(p => ({ ...p, institution: e.target.value }))}
                     className="w-full h-10 px-3 rounded-lg border border-[#E0E0E0] text-[14px] outline-none focus:border-black transition-colors"
                   />
                 </div>
