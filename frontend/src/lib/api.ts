@@ -1,117 +1,18 @@
 // src/lib/api.ts
 
-/**
- * API client — connects the Lumiere frontend to Parteek's PostgreSQL backend.
- * Base URL comes from NEXT_PUBLIC_API_URL env var, defaults to localhost:8000.
- */
-
-const BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-
-async function api<T = any>(path: string, opts?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, opts);
-  if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
-  return res.json();
-}
-
-// ── Types (matching the real DB schema) ─────────────────────────
+const NODE_API_URL = 'http://127.0.0.1:3001/api';
+const PYTHON_API_URL = 'http://127.0.0.1:8000';
 
 export interface Patient {
   id: string;
-  fhir_id: string | null;
-  family_name: string | null;
-  given_name: string | null;
-  dob: string | null;
-  gender: string | null;
-  phone: string | null;
-  address_line: string | null;
-  city: string | null;
-  state: string | null;
-  zip: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface PatientDetail extends Patient {
-  observations: Observation[];
-  medications: Medication[];
-  mpi_links: MPISourceLink[];
-}
-
-export interface Observation {
-  id: string;
-  patient_id: string | null;
-  obs_type: string | null;
-  obs_code: string | null;
-  obs_value: string | null;
-  obs_unit: string | null;
-  obs_datetime: string | null;
-  notes_text: string | null;
-  embedding_status: string | null;
-  created_at: string;
-}
-
-export interface Medication {
-  id: string;
-  patient_id: string | null;
-  medication_name: string | null;
-  dosage: string | null;
-  frequency: string | null;
-  start_date: string | null;
-  end_date: string | null;
-  prescriber: string | null;
-  created_at: string;
-}
-
-export interface DuplicateCandidate {
-  id: string;
-  record_a_id: string | null;
-  record_b_id: string | null;
-  blocking_key: string | null;
-  soundex_score: number | null;
-  nysiis_score: number | null;
-  dob_match: boolean;
-  ssn_partial_match: boolean;
-  vector_similarity: number | null;
-  composite_score: number | null;
-  created_at: string;
-  record_a: Patient | null;
-  record_b: Patient | null;
-}
-
-export interface GoldenRecord {
-  id: string;
-  golden_patient_id: string;
-  confidence_score: number | null;
-  resolution_status: string | null;
-  resolved_by: string | null;
-  resolved_at: string | null;
-  notes: string | null;
-  created_at: string;
-  updated_at: string;
-  source_links: MPISourceLink[];
-}
-
-export interface MPISourceLink {
-  id: string;
-  mpi_id: string | null;
-  source_patient_id: string | null;
-  link_weight: number | null;
-  created_at: string;
-}
-
-export interface SourceSystem {
-  id: string;
-  system_name: string;
-  system_type: string | null;
-  base_url: string | null;
-  is_active: boolean;
-  created_at: string;
-}
-
-export interface DuplicateStats {
-  total: number;
-  high_confidence: number;
-  needs_review: number;
+  name: string;
+  mrn: string;
+  dob: string;
+  gender: string;
+  completeness: number;
+  lastUpdated: string;
+  tags: string[];
+  sources: string[];
 }
 
 export interface Match {
@@ -128,329 +29,98 @@ export interface QueryResponse {
   sources: string[];
 }
 
-// ── Patient endpoints ────────────────────────────────────────
-
-export async function fetchPatients(query?: string): Promise<Patient[]> {
-  const params = new URLSearchParams({ limit: '50' });
-  if (query) params.set('q', query);
-  return api<Patient[]>(`/api/patients?${params}`);
-}
-
-export interface PatientCreatePayload {
-  given_name: string;
-  family_name: string;
-  dob: string;
-  gender: string;
-  phone: string;
-  gov_id?: string;
-  address_line?: string;
-  source_system?: string;
-}
-
-export async function createPatient(data: PatientCreatePayload): Promise<Patient> {
-  return api<Patient>('/api/patients', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
-}
-
-export async function getPatient(id: string): Promise<PatientDetail> {
-  return api<PatientDetail>(`/api/patients/${id}`);
-}
-
-export async function getPatientObservations(id: string): Promise<Observation[]> {
-  return api<Observation[]>(`/api/patients/${id}/observations`);
-}
-
-export async function getPatientMedications(id: string): Promise<Medication[]> {
-  return api<Medication[]>(`/api/patients/${id}/medications`);
-}
-
-// ── Duplicate detection endpoints ────────────────────────────
-
-export async function getDuplicates(minScore = 0.6): Promise<DuplicateCandidate[]> {
-  return api<DuplicateCandidate[]>(`/api/duplicates?min_score=${minScore}&limit=100`);
-}
-
-export async function getDuplicateStats(): Promise<DuplicateStats> {
-  return api<DuplicateStats>('/api/duplicates/stats');
-}
-
-export async function getPatientDuplicates(id: string): Promise<DuplicateCandidate[]> {
-  return api<DuplicateCandidate[]>(`/api/patients/${id}/duplicates`);
-}
-
-// ── Golden Record endpoints ──────────────────────────────────
-
-export async function getGoldenRecords(status?: string): Promise<GoldenRecord[]> {
-  const params = new URLSearchParams({ limit: '100' });
-  if (status) params.set('status', status);
-  return api<GoldenRecord[]>(`/api/golden-records?${params}`);
-}
-
-export async function getGoldenRecordStats(): Promise<Record<string, number>> {
-  return api<Record<string, number>>('/api/golden-records/stats');
-}
-
-export async function updateGoldenRecord(
-  id: string,
-  data: { resolution_status?: string; resolved_by?: string; notes?: string }
-): Promise<GoldenRecord> {
-  return api<GoldenRecord>(`/api/golden-records/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
-}
-
-// ── Other endpoints ──────────────────────────────────────────
-
-export async function getSourceSystems(): Promise<SourceSystem[]> {
-  return api<SourceSystem[]>('/api/source-systems');
-}
-
-export async function getAuditLog() {
-  return api('/api/audit-log?limit=50');
-}
-
-export async function getIngestionJobs() {
-  return api('/api/ingestion-jobs');
-}
-
-// ── Legacy compat wrappers (used by old components) ──────────
-
-export async function findDuplicates(_patientId: string): Promise<Match[]> {
-  const dupes = await getPatientDuplicates(_patientId);
-  return dupes.map(d => ({
-    id: d.id,
-    similarityScore: Math.round((d.composite_score ?? 0) * 100),
-    recordA: {
-      name: `${d.record_a?.given_name ?? ''} ${d.record_a?.family_name ?? ''}`.trim(),
-      mrn: d.record_a?.fhir_id ?? d.record_a_id ?? '',
-      source: 'EHR',
-    },
-    recordB: {
-      name: `${d.record_b?.given_name ?? ''} ${d.record_b?.family_name ?? ''}`.trim(),
-      mrn: d.record_b?.fhir_id ?? d.record_b_id ?? '',
-      source: 'Lab',
-    },
-    matchedFields: [
-      ...(d.dob_match ? ['DOB'] : []),
-      ...(d.ssn_partial_match ? ['SSN'] : []),
-      ...((d.soundex_score ?? 0) > 0.7 ? ['Name (Soundex)'] : []),
-    ],
+/**
+ * Fetch all patients
+ */
+export async function fetchPatients(): Promise<Patient[]> {
+  const response = await fetch(`${NODE_API_URL}/records`);
+  if (!response.ok) throw new Error('Failed to fetch patients');
+  const data = await response.json();
+  
+  return data.map((p: any) => ({
+    ...p,
+    lastUpdated: p.lastUpdatedAt // Mapping backend field
   }));
 }
 
-export async function mergeRecords(matchId: string) {
-  return updateGoldenRecord(matchId, { resolution_status: 'CONFIRMED', resolved_by: 'system' });
+/**
+ * Find duplicate patients
+ */
+export async function findDuplicates(patientId: string): Promise<Match[]> {
+  const response = await fetch(`${NODE_API_URL}/hitl/queue`);
+  if (!response.ok) throw new Error('Failed to fetch duplicates');
+  const queue = await response.json();
+  
+  // Filter queue for specific patient if needed, but usually we show the whole queue
+  return queue.map((m: any) => ({
+    id: m.id,
+    similarityScore: m.score * 100,
+    recordA: { 
+        name: m.incoming.name, 
+        mrn: m.incoming.mrn || 'N/A', 
+        source: m.incoming.source 
+    },
+    recordB: { 
+        name: m.potentialMatch.name, 
+        mrn: m.potentialMatch.mrn || 'N/A', 
+        source: m.potentialMatch.source 
+    },
+    matchedFields: m.matchedFields || ['Name', 'DOB']
+  }));
 }
 
-export async function askQuestion(question: string, patientId?: string): Promise<QueryResponse> {
-  return api<QueryResponse>('/api/ask', {
+/**
+ * Merge patient records
+ */
+export async function mergeRecords(
+  matchId: string
+): Promise<{ success: boolean; message: string }> {
+  const response = await fetch(`${NODE_API_URL}/hitl/resolve`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question, patient_id: patientId || null }),
+    body: JSON.stringify({ queueId: matchId, action: 'merge' })
   });
+  
+  if (!response.ok) return { success: false, message: 'Failed to merge' };
+  return { success: true, message: 'Records merged successfully' };
 }
 
+/**
+ * Query patient data with natural language
+ */
+export async function askQuestion(question: string): Promise<QueryResponse> {
+  const response = await fetch(`${PYTHON_API_URL}/query`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question })
+  });
+  
+  if (!response.ok) throw new Error('AI Query failed');
+  return await response.json();
+}
+
+/**
+ * Get patient golden record
+ */
 export async function getGoldenRecord(patientId: string) {
-  const detail = await getPatient(patientId);
+  // We fetch standard record from Node, and intelligence from Python
+  const [recordRes, intelligenceRes] = await Promise.all([
+    fetch(`${NODE_API_URL}/records/${patientId}`),
+    fetch(`${PYTHON_API_URL}/patient/${patientId}`)
+  ]);
+
+  if (!recordRes.ok) throw new Error('Failed to fetch record data');
+  
+  const record = await recordRes.ok ? await recordRes.json() : {};
+  const intelligence = await intelligenceRes.ok ? await intelligenceRes.json() : { lumiere_metadata: {} };
+
+  // Combine data
   return {
-    id: detail.id,
-    name: `${detail.given_name ?? ''} ${detail.family_name ?? ''}`.trim(),
-    mrn: detail.fhir_id ?? detail.id.slice(0, 12),
-    dob: detail.dob ?? 'Unknown',
-    gender: detail.gender ?? 'Unknown',
-    bloodType: 'N/A',
-    trustScore: 94,
-    medications: detail.medications.map(m => ({
-      name: m.medication_name ?? 'Unknown',
-      dose: m.dosage ?? '',
-      frequency: m.frequency ?? '',
-      since: m.start_date ?? '',
-    })),
-    visits: detail.observations.slice(0, 5).map(o => ({
-      date: o.obs_datetime ?? o.created_at,
-      provider: 'Clinical Staff',
-      type: o.obs_type ?? 'Observation',
-      notes: o.obs_value ?? '',
-    })),
+    ...record,
+    trustScore: (intelligence.lumiere_metadata?.confidence_score * 100) || 80,
+    medications: [], // Placeholder if not in CSV yet
+    visits: [],
     timeline: [],
-    sources: ['EHR System', 'Lab Database', 'Pharmacy Records'],
+    sources: record.sources || intelligence.lumiere_metadata?.data_sources || []
   };
-}
-
-// ── Ingestion endpoints ──────────────────────────────────────
-
-export interface IngestVoicePayload {
-  transcript: string;
-  given_name?: string;
-  family_name?: string;
-  dob?: string;
-  gender?: string;
-  phone?: string;
-  address_line?: string;
-  city?: string;
-  state?: string;
-  zip?: string;
-  observation_notes?: string;
-}
-
-export async function ingestVoice(data: IngestVoicePayload): Promise<Patient> {
-  return api<Patient>('/api/ingest/voice', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
-}
-
-export interface IngestPdfPayload {
-  given_name?: string;
-  family_name?: string;
-  dob?: string;
-  gender?: string;
-  phone?: string;
-  address_line?: string;
-  city?: string;
-  state?: string;
-  zip?: string;
-  observation_notes?: string;
-  raw_text?: string;
-}
-
-export async function ingestPdf(data: IngestPdfPayload): Promise<Patient> {
-  return api<Patient>('/api/ingest/pdf', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
-}
-
-export async function ingestCsv(file: File): Promise<Patient[]> {
-  const form = new FormData();
-  form.append('file', file);
-  const res = await fetch(`${BASE}/api/ingest/csv`, { method: 'POST', body: form });
-  if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
-  return res.json();
-}
-
-// ── Entity matching endpoints ────────────────────────────────
-
-export async function runEntityMatching() {
-  return api('/api/match/run', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-  });
-}
-
-export async function recomputeScores() {
-  return api('/api/match/recompute', { method: 'POST' });
-}
-
-// ── Embedding endpoint ───────────────────────────────────────
-
-export async function runEmbeddings(limit = 100) {
-  return api(`/api/embed/run?limit=${limit}`, { method: 'POST' });
-}
-
-// ── OCR — Real PDF text extraction ──────────────────────────────
-
-export interface OcrExtractResult {
-  raw_text: string;
-  page_count: number;
-  method: string;
-  extracted_fields: {
-    diagnosis: string;
-    medications: string;
-    findings: string;
-  };
-}
-
-/** Upload a PDF file → server extracts text via pdfplumber/Tesseract.
- *  Returns extracted fields for UI review; does NOT persist yet. */
-export async function extractPdfOcr(file: File): Promise<OcrExtractResult> {
-  const form = new FormData();
-  form.append('file', file);
-  const res = await fetch(`${BASE}/api/ingest/pdf/file`, { method: 'POST', body: form });
-  if (!res.ok) throw new Error(`OCR ${res.status}: ${res.statusText}`);
-  return res.json();
-}
-
-// ── Whisper STT — server-side audio transcription ────────────────
-
-export interface TranscribeResult {
-  transcript: string;
-  model: string;
-  language: string;
-}
-
-/** Upload audio file → Whisper API transcription.
- *  Requires OPENAI_API_KEY on server; falls back to browser STT if absent. */
-export async function transcribeAudio(file: File): Promise<TranscribeResult> {
-  const form = new FormData();
-  form.append('file', file);
-  const res = await fetch(`${BASE}/api/transcribe`, { method: 'POST', body: form });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail || `Transcribe ${res.status}`);
-  }
-  return res.json();
-}
-
-// ── HL7 v2 Ingestion ─────────────────────────────────────────────
-
-/** Parse an HL7 v2 message string and persist as FHIR R4 patient. */
-export async function ingestHL7(hl7Message: string): Promise<Patient> {
-  return api<Patient>('/api/ingest/hl7', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ hl7_message: hl7Message }),
-  });
-}
-
-// ── REST Connector ────────────────────────────────────────────────
-
-export interface ConnectorPullResult {
-  records_ingested: number;
-  source: string;
-  url: string;
-}
-
-/** Pull patient records from an external REST API or FHIR feed. */
-export async function pullConnector(
-  opts: { url?: string; sourceSystemId?: string }
-): Promise<ConnectorPullResult> {
-  const params = new URLSearchParams();
-  if (opts.url)            params.set('url', opts.url);
-  if (opts.sourceSystemId) params.set('source_system_id', opts.sourceSystemId);
-  return api<ConnectorPullResult>(`/api/connectors/pull?${params}`, { method: 'POST' });
-}
-
-/** Test connectivity to a REST API endpoint. */
-export async function testConnector(url: string) {
-  return api(`/api/connectors/test?url=${encodeURIComponent(url)}`);
-}
-
-// ── FHIR R4 JSON resources ────────────────────────────────────────
-
-/** Return a FHIR R4 Patient resource JSON. */
-export async function getFhirPatient(id: string) {
-  return api(`/api/fhir/Patient/${id}`);
-}
-
-/** Return a FHIR R4 Bundle of Observations for a patient. */
-export async function getFhirObservations(id: string) {
-  return api(`/api/fhir/Patient/${id}/Observation`);
-}
-
-/** Return a FHIR R4 Bundle of MedicationRequests for a patient. */
-export async function getFhirMedications(id: string) {
-  return api(`/api/fhir/Patient/${id}/MedicationRequest`);
-}
-
-/** Return FHIR R4 CapabilityStatement. */
-export async function getFhirCapabilityStatement() {
-  return api('/api/fhir/metadata');
 }

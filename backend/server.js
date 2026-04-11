@@ -12,12 +12,13 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-app.use(cors());
+app.use(cors({ origin: '*' })); // Allow all for local dev
 app.use(express.json());
 
 // Clinical Ingestion Routes
 app.post('/api/ingest', (req, res) => clinicalController.ingest(req, res));
 app.get('/api/records', (req, res) => clinicalController.getRecords(req, res));
+app.get('/api/records/:id', (req, res) => clinicalController.getRecordById(req, res));
 
 // HITL (Human-in-the-Loop) Routes
 app.get('/api/hitl/queue', (req, res) => clinicalController.getQueue(req, res));

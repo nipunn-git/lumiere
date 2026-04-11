@@ -7,7 +7,30 @@ const normalizationService = require('../services/normalizationService');
 const resolutionService = require('../services/resolutionService');
 
 // In-memory "Golden Record" store
-const goldenRecords = [];
+const goldenRecords = [
+    {
+        id: 'P001',
+        name: 'John Doe',
+        mrn: 'MRN-1001',
+        dob: '1990-01-01',
+        gender: 'Male',
+        completeness: 85,
+        lastUpdatedAt: new Date().toISOString(),
+        tags: ['Stable'],
+        sources: ['EHR', 'Lab']
+    },
+    {
+        id: 'P002',
+        name: 'Jane Smith',
+        mrn: 'MRN-1002',
+        dob: '1985-05-12',
+        gender: 'Female',
+        completeness: 92,
+        lastUpdatedAt: new Date().toISOString(),
+        tags: ['Critical Audit'],
+        sources: ['EHR', 'Pharmacy']
+    }
+];
 const hitlQueue = [];
 
 class ClinicalController {
@@ -67,22 +90,46 @@ class ClinicalController {
         res.json(hitlQueue);
     }
 
+    getRecordById(req, res) {
+        const { id } = req.params;
+        const record = goldenRecords.find(r => r.id === id);
+        if (!record) return res.status(404).json({ error: 'Record not found' });
+        res.json(record);
+    }
+
     resolveQueue(req, res) {
-        const { queueId, action } = req.body; // action: 'merge' | 'create_new'
+        const { queueId, action, alias, preferredName } = req.body; 
         const index = hitlQueue.findIndex(q => q.id === queueId);
         
         if (index === -1) return res.status(404).json({ error: 'Queue item not found' });
 
         const item = hitlQueue[index];
+        const finalName = preferredName || item.potentialMatch.name;
+
         if (action === 'merge') {
             const gIndex = goldenRecords.findIndex(r => r.id === item.potentialMatch.id);
-            goldenRecords[gIndex].mergedSources.push(item.incoming.source);
+            if (gIndex !== -1) {
+                goldenRecords[gIndex].mergedSources.push(item.incoming.source);
+                if (alias) {
+                    goldenRecords[gIndex].aliases = [...(goldenRecords[gIndex].aliases || []), alias];
+                }
+                // Update name if preferredName provided
+                if (preferredName) goldenRecords[gIndex].name = preferredName;
+                goldenRecords[gIndex].lastUpdatedAt = new Date().toISOString();
+            }
         } else {
-            goldenRecords.push(item.incoming);
+            // Create New
+            const newRecord = {
+                ...item.incoming,
+                name: preferredName || item.incoming.name,
+                mergedSources: [item.incoming.source],
+                lastUpdatedAt: new Date().toISOString()
+            };
+            goldenRecords.push(newRecord);
         }
 
         hitlQueue.splice(index, 1);
-        res.json({ status: 'resolved', action });
+        res.json({ status: 'resolved', action, finalName });
     }
 }
 

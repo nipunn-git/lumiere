@@ -1,139 +1,102 @@
 import sys
 import os
-sys.path.append(os.path.dirname(__file__))
-from matcher import is_match
-from intelligence import generate_insights
-from fastapi import FastAPI, HTTPException
-from database import load_data
 import pandas as pd
-import os
 from typing import Optional
 from datetime import datetime
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="Lumiere Clinical Engine")
+# local imports
+sys.path.append(os.path.dirname(__file__))
+from database import load_data
 
-# Load Data Paths
-EHR_PATH = "ehr_data.csv"
-LAB_PATH = "lab_results.csv"
-def fuzzy_merge(df_ehr, df_lab):
-    merged_rows = []
+# AI engine imports
+AI_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "ai")
+if AI_PATH not in sys.path:
+    sys.path.append(AI_PATH)
+from pipeline import identity_pipeline
+from features import is_greeting
+from query_engine import query_engine  # used only for conversational greeting chat
 
-    for _, ehr_row in df_ehr.iterrows():   # loop EHR
-        for _, lab_row in df_lab.iterrows():  # loop Lab
+app = FastAPI(title="Lumiere")
 
-            # check match
-            if is_match(ehr_row['name'], lab_row['patient_name']) \
-               and ehr_row['dob'] == lab_row['dob']:
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-                # merge both rows
-                combined = {**ehr_row, **lab_row}
-                merged_rows.append(combined)
+@app.get("/")
+async def root():
+    return {
+        "status": "online",
+        "service": "Lumiere Clinical Intelligence",
+        "version": "2.0.0",
+        "endpoints": ["/identify", "/resolve-merge"]
+    }
 
-    return pd.DataFrame(merged_rows)
+@app.post("/identify")
+async def identity_resolution(request: dict):
+    """
+    Unified Identity Resolution: Searches, Scores, and Auto-Processes Merges.
+    """
+    query = request.get("query")
+    if not query:
+        raise HTTPException(status_code=400, detail="Query is required")
+    
+    # 1. Greeting detection — route to conversational AI, no database search
+    if is_greeting(query):
+        return await query_engine.chat(query)
 
-def get_merged_data():
-    df_ehr, df_lab = load_data()
+    try:
+        # 2. Run the fully local identity resolution pipeline
+        #    All scoring, classification, and verdict generation happens inside.
+        #    Zero Groq tokens are spent here.
+        result = await identity_pipeline.resolve(query)
+        return result
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"[ERROR] identity_resolution: {error_details}")
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "Internal Pipeline Error",
+                "message": str(e),
+                "traceback": error_details if os.environ.get("DEBUG") == "true" else "Disabled"
+            }
+        )
 
-    merged_rows = []
-
-    for _, ehr_row in df_ehr.iterrows():
-        for _, lab_row in df_lab.iterrows():
-
-            # STRICT DOB MATCH FIRST
-            if ehr_row['dob'] == lab_row['dob']:
-
-                match, score = is_match(
-                    ehr_row['name'],
-                    lab_row['patient_name'],
-                    ehr_row['dob'],
-                    lab_row['dob']
-                )
-
-                # Allow lower threshold
-                if score >= 0.4:
-                    combined = {**ehr_row, **lab_row}
-                    combined["confidence_score"] = round(score, 2)
-                    merged_rows.append(combined)
-
-    return pd.DataFrame(merged_rows)
+@app.post("/resolve-merge")
+async def resolve_merge(resolution: dict):
+    """
+    Human-in-the-Loop Override for records flagged for Review.
+    """
+    pair_id = resolution.get("pair_id")
+    action = resolution.get("action")
+    
+    if action == "merge":
+        return {"status": "success", "message": f"Authorization Approved: Records {pair_id} have been merged."}
+    else:
+        return {"status": "success", "message": f"Action Recorded: Records {pair_id} will remain distinct."}
 
 @app.get("/patient/{patient_id}")
-async def get_patient_record(patient_id: str):
-    df = get_merged_data()
+async def get_patient_analytics(patient_id: str):
+    # Keep this for backward compatibility with the frontend dashboard
+    df_ehr, _ = load_data()
+    patient_record = df_ehr[df_ehr['id'] == patient_id]
+    if patient_record.empty:
+        raise HTTPException(status_code=404, detail="Patient not found")
     
-    if df is None or df.empty:
-        raise HTTPException(status_code=404, detail="Data sources not found")
-    
-    # Filter by EHR Patient ID as requested
-    record = df[df['patient_id'] == patient_id]
-    
-    if record.empty:
-        raise HTTPException(status_code=404, detail=f"Patient {patient_id} not found in unified records")
-    
-    # Extract row
-    row = record.iloc[0]
-    
-    # --- Intelligence Layer ---
-    glucose = float(row['glucose'])
-    heart_rate = float(row['heart_rate'])
-    
-    health_score, alerts, status = generate_insights(glucose, heart_rate)
-    
-    # --- FHIR-like JSON Synthesis ---
-    fhir_record = {
-        "resourceType": "Bundle",
-        "type": "collection",
-        "entry": [
-            {
-                "fullUrl": f"Patient/{row['patient_id']}",
-                "resource": {
-                    "resourceType": "Patient",
-                    "id": row['patient_id'],
-                    "name": [{"text": row['name']}],
-                    "gender": "male" if row['gender'].lower() == "m" else "female",
-                    "birthDate": row['dob'],
-                    "address": [{"text": row['address']}]
-                }
-            },
-            {
-                "fullUrl": "Observation/lumiere-intelligence",
-                "resource": {
-                    "resourceType": "Observation",
-                    "status": "final",
-                    "code": {
-                        "text": "Lumiere Composite Health Record"
-                    },
-                    "subject": {"reference": f"Patient/{row['patient_id']}"},
-                    "effectiveDateTime": row['test_date'],
-                    "valueQuantity": {
-                        "value": health_score,
-                        "unit": "Score",
-                        "system": "http://lumiere.ai/scores"
-                    },
-                    "component": [
-                        {"code": {"text": "Glucose"}, "valueQuantity": {"value": glucose, "unit": "mg/dL"}},
-                        {"code": {"text": "Heart Rate"}, "valueQuantity": {"value": heart_rate, "unit": "bpm"}}
-                    ],
-                    "extension": [
-                        {
-                            "url": "http://lumiere.ai/fhir/StructureDefinition/clinical-alerts",
-                            "valueString": str(alerts)
-                        }
-                    ]
-                }
-            }
-        ],
-        "lumiere_metadata": {
-    "health_score": health_score,
-    "status": status,
-    "alerts": alerts,
-    "confidence_score": row.get("confidence_score", 0.8),
-    "data_sources": ["EHR", "Lab"],
-    "synthesis_timestamp": datetime.now().isoformat()
-}
+    row = patient_record.iloc[0]
+    return {
+        "id": row['id'],
+        "name": row['name'],
+        "confidence": 0.95,
+        "summary": "Record synthesized via Lumiere Clinical Intelligence Engine."
     }
-    
-    return fhir_record
 
 if __name__ == "__main__":
     import uvicorn

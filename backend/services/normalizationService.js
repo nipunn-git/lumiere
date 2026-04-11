@@ -32,6 +32,7 @@ class NormalizationService {
                 gender: this._parseGender(input.content),
                 identifiers: {
                     ssn: this._regexMatch(input.content, /\b\d{3}-\d{2}-\d{4}\b/),
+                    phone: this._regexMatch(input.content, /\b\d{3}-\d{3}-\d{4}\b/),
                 }
             };
         }
