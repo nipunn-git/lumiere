@@ -1,12 +1,11 @@
-// src/lib/api.ts
+﻿// src/lib/api.ts
 
 /**
- * API client — connects the Lumiere frontend to the backend.
+ * API client ΓÇö connects the Lumiere frontend to Parteek's PostgreSQL backend.
  * Base URL comes from NEXT_PUBLIC_API_URL env var, defaults to localhost:8000.
  */
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-const PYTHON_API_URL = 'http://127.0.0.1:8000';
 
 async function api<T = any>(path: string, opts?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, opts);
@@ -14,14 +13,13 @@ async function api<T = any>(path: string, opts?: RequestInit): Promise<T> {
   return res.json();
 }
 
-// ── Types (matching the DB schema with compatibility layers) ─────────────────
+// ΓöÇΓöÇ Types (matching the real DB schema) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 export interface Patient {
   id: string;
   fhir_id: string | null;
   family_name: string | null;
   given_name: string | null;
-  name: string;             // Compatibility field
   dob: string | null;
   gender: string | null;
   phone: string | null;
@@ -31,10 +29,6 @@ export interface Patient {
   zip: string | null;
   created_at: string;
   updated_at: string;
-  lastUpdated: string;      // Compatibility field
-  completeness: number;     // Compatibility field
-  tags: string[];           // Compatibility field
-  sources: string[];        // Compatibility field
 }
 
 export interface PatientDetail extends Patient {
@@ -134,22 +128,12 @@ export interface QueryResponse {
   sources: string[];
 }
 
-// ── Patient endpoints ────────────────────────────────────────────────────────
+// ΓöÇΓöÇ Patient endpoints ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 export async function fetchPatients(query?: string): Promise<Patient[]> {
   const params = new URLSearchParams({ limit: '50' });
   if (query) params.set('q', query);
-  const pts = await api<Patient[]>(`/api/patients?${params}`);
-  
-  // Apply compatibility mappings
-  return pts.map(p => ({
-    ...p,
-    name: `${p.given_name ?? ''} ${p.family_name ?? ''}`.trim(),
-    lastUpdated: p.updated_at,
-    completeness: 90,
-    tags: [],
-    sources: ['EHR']
-  }));
+  return api<Patient[]>(`/api/patients?${params}`);
 }
 
 export interface PatientCreatePayload {
@@ -183,7 +167,7 @@ export async function getPatientMedications(id: string): Promise<Medication[]> {
   return api<Medication[]>(`/api/patients/${id}/medications`);
 }
 
-// ── Duplicate detection endpoints ────────────────────────────────────────────
+// ΓöÇΓöÇ Duplicate detection endpoints ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 export async function getDuplicates(minScore = 0.6): Promise<DuplicateCandidate[]> {
   return api<DuplicateCandidate[]>(`/api/duplicates?min_score=${minScore}&limit=100`);
@@ -197,7 +181,7 @@ export async function getPatientDuplicates(id: string): Promise<DuplicateCandida
   return api<DuplicateCandidate[]>(`/api/patients/${id}/duplicates`);
 }
 
-// ── Golden Record endpoints ──────────────────────────────────────────────────
+// ΓöÇΓöÇ Golden Record endpoints ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 export async function getGoldenRecords(status?: string): Promise<GoldenRecord[]> {
   const params = new URLSearchParams({ limit: '100' });
@@ -220,7 +204,7 @@ export async function updateGoldenRecord(
   });
 }
 
-// ── Other endpoints ──────────────────────────────────────────────────────────
+// ΓöÇΓöÇ Other endpoints ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 export async function getSourceSystems(): Promise<SourceSystem[]> {
   return api<SourceSystem[]>('/api/source-systems');
@@ -234,7 +218,7 @@ export async function getIngestionJobs() {
   return api('/api/ingestion-jobs');
 }
 
-// ── Legacy compat wrappers (used by old components) ──────────────────────────
+// ΓöÇΓöÇ Legacy compat wrappers (used by old components) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 export async function findDuplicates(_patientId: string): Promise<Match[]> {
   const dupes = await getPatientDuplicates(_patientId);
@@ -298,7 +282,7 @@ export async function getGoldenRecord(patientId: string) {
   };
 }
 
-// ── Ingestion endpoints ──────────────────────────────────────────────────────
+// ΓöÇΓöÇ Ingestion endpoints ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 export interface IngestVoicePayload {
   transcript: string;
@@ -352,7 +336,7 @@ export async function ingestCsv(file: File): Promise<Patient[]> {
   return res.json();
 }
 
-// ── Entity matching endpoints ────────────────────────────────────────────────
+// ΓöÇΓöÇ Entity matching endpoints ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 export async function runEntityMatching() {
   return api('/api/match/run', {
@@ -365,13 +349,13 @@ export async function recomputeScores() {
   return api('/api/match/recompute', { method: 'POST' });
 }
 
-// ── Embedding endpoint ───────────────────────────────────────────────────────
+// ΓöÇΓöÇ Embedding endpoint ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 export async function runEmbeddings(limit = 100) {
   return api(`/api/embed/run?limit=${limit}`, { method: 'POST' });
 }
 
-// ── OCR — Real PDF text extraction ───────────────────────────────────────────
+// ΓöÇΓöÇ OCR ΓÇö Real PDF text extraction ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 export interface OcrExtractResult {
   raw_text: string;
@@ -384,7 +368,7 @@ export interface OcrExtractResult {
   };
 }
 
-/** Upload a PDF file → server extracts text via pdfplumber/Tesseract.
+/** Upload a PDF file ΓåÆ server extracts text via pdfplumber/Tesseract.
  *  Returns extracted fields for UI review; does NOT persist yet. */
 export async function extractPdfOcr(file: File): Promise<OcrExtractResult> {
   const form = new FormData();
@@ -394,7 +378,7 @@ export async function extractPdfOcr(file: File): Promise<OcrExtractResult> {
   return res.json();
 }
 
-// ── Whisper STT — server-side audio transcription ────────────────────────────
+// ΓöÇΓöÇ Whisper STT ΓÇö server-side audio transcription ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 export interface TranscribeResult {
   transcript: string;
@@ -402,7 +386,7 @@ export interface TranscribeResult {
   language: string;
 }
 
-/** Upload audio file → Whisper API transcription.
+/** Upload audio file ΓåÆ Whisper API transcription.
  *  Requires OPENAI_API_KEY on server; falls back to browser STT if absent. */
 export async function transcribeAudio(file: File): Promise<TranscribeResult> {
   const form = new FormData();
@@ -415,7 +399,7 @@ export async function transcribeAudio(file: File): Promise<TranscribeResult> {
   return res.json();
 }
 
-// ── HL7 v2 Ingestion ─────────────────────────────────────────────────────────
+// ΓöÇΓöÇ HL7 v2 Ingestion ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 /** Parse an HL7 v2 message string and persist as FHIR R4 patient. */
 export async function ingestHL7(hl7Message: string): Promise<Patient> {
@@ -426,7 +410,7 @@ export async function ingestHL7(hl7Message: string): Promise<Patient> {
   });
 }
 
-// ── REST Connector ───────────────────────────────────────────────────────────
+// ΓöÇΓöÇ REST Connector ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 export interface ConnectorPullResult {
   records_ingested: number;
@@ -449,7 +433,7 @@ export async function testConnector(url: string) {
   return api(`/api/connectors/test?url=${encodeURIComponent(url)}`);
 }
 
-// ── FHIR R4 JSON resources ───────────────────────────────────────────────────
+// ΓöÇΓöÇ FHIR R4 JSON resources ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 /** Return a FHIR R4 Patient resource JSON. */
 export async function getFhirPatient(id: string) {
@@ -469,55 +453,4 @@ export async function getFhirMedications(id: string) {
 /** Return FHIR R4 CapabilityStatement. */
 export async function getFhirCapabilityStatement() {
   return api('/api/fhir/metadata');
-}
-
-// ── Lumiere AI Integration ────────────────────────────────────
-
-export interface LumiereIdentifyResult {
-  status: 'success' | 'no_records_found' | 'chat';
-  summary: string;
-  search_results?: any[];
-  action_report?: {
-    auto_merges_completed: LumiereMergePair[];
-    pending_human_review: LumiereMergePair[];
-    confirmed_duplicates_ignored: LumiereMergePair[];
-  };
-}
-
-export interface LumiereMergePair {
-  pair_id: string;
-  records: any[];
-  ai_analysis: {
-    decision: 'merge' | 'review' | 'separate';
-    confidence: number;
-    weighted_raw: number;
-    hard_disqualifier: boolean;
-    reasoning: string;
-  };
-}
-
-/**
- * Calls the Lumiere Python AI engine to resolve identities.
- */
-export async function identifyRecords(query: string): Promise<LumiereIdentifyResult> {
-  const response = await fetch(`${PYTHON_API_URL}/identify`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query }),
-  });
-  if (!response.ok) throw new Error(`Lumiere identify failed: ${response.status}`);
-  return response.json();
-}
-
-/**
- * Calls the Lumiere Python AI engine to confirm or reject a merge.
- */
-export async function resolveMergeRecord(pairId: string, action: 'merge' | 'separate') {
-  const response = await fetch(`${PYTHON_API_URL}/resolve-merge`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ pair_id: pairId, action }),
-  });
-  if (!response.ok) throw new Error(`Lumiere merge resolution failed: ${response.status}`);
-  return response.json();
 }

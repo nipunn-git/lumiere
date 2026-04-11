@@ -47,7 +47,7 @@ export default function ClinicianDashboard() {
           getGoldenRecordStats(),
           getDuplicates(0.6),
         ]);
-        const totalGR = Object.values(grStats).reduce((a, b) => a + b, 0);
+        const totalGR = Object.values(grStats).reduce((a: number, b: number) => a + b, 0);
         setStats({
           patients: pts.length,
           resolutions: dupStats.needs_review,
@@ -92,11 +92,35 @@ export default function ClinicianDashboard() {
   return (
     <div className="max-w-[1100px] mx-auto space-y-8 page-enter">
       {/* Greeting */}
-      <div>
-        <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-black">
-          {getGreeting()}, Dr. Parteek.
-        </h1>
-        <p className="text-[13px] text-neutral-500 mt-1">{formatDate()}</p>
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div>
+          <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-black">
+            {getGreeting()}, Dr. Parteek.
+          </h1>
+          <p className="text-[13px] text-neutral-500 mt-1">{formatDate()}</p>
+        </div>
+        
+        {/* Lumiere Quick Search */}
+        <div className="flex-1 max-w-md w-full">
+           <div className="relative group">
+              <div className="absolute inset-0 bg-black/5 blur-2xl opacity-0 group-hover:opacity-100 transition-opacity rounded-xl"></div>
+              <div className="relative flex items-center bg-white border border-[#EBEBEB] rounded-xl px-4 py-2 hover:border-[#C8C8C8] transition-all">
+                 <input 
+                   type="text" 
+                   placeholder="Ask Lumiere (name, phone...)"
+                   className="bg-transparent border-none outline-none text-[13px] font-medium w-full text-black placeholder-neutral-400"
+                   onKeyDown={(e) => {
+                     if (e.key === 'Enter') {
+                       router.push(`/query?q=${encodeURIComponent(e.currentTarget.value)}`);
+                     }
+                   }}
+                 />
+                 <div className="flex items-center gap-1 ml-2 px-1.5 py-0.5 bg-neutral-100 rounded text-[9px] font-bold text-neutral-400 uppercase tracking-widest border border-black/5">
+                    Search
+                 </div>
+              </div>
+           </div>
+        </div>
       </div>
 
       {/* Stat Cards */}
