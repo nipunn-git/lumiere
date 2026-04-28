@@ -1,0 +1,15 @@
+backend
+migrations
+alembic.ini
+*.py
+db_test.py
+embed_observations.py
+export_for_ml.py
+models.py
+seed_rag.py
+seed.py
+schema.sql
+.git
+.gitignore
+README.md
+BACKEND_README.md
