@@ -1,9 +1,29 @@
 {
   "buildCommand": "cd frontend && npm run build",
   "outputDirectory": "frontend/.next",
-  "framework": null,
+  "framework": "nextjs",
   "public": false,
-  "rewrites": [
-    { "source": "/api/(.*)", "destination": "/backend/server.js" }
+  "functions": {
+    "backend/server.js": {
+      "runtime": "nodejs18.x",
+      "handler": "server.js",
+      "memory": 1024,
+      "maxDuration": 60
+    }
+  },
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/backend/server.js",
+      "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+    },
+    {
+      "src": "/health",
+      "dest": "/backend/server.js"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/frontend"
+    }
   ]
 }
